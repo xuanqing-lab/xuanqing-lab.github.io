@@ -1,0 +1,43 @@
+name: Preserve existing workbench links
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '19 */6 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: legacy-workbench-pages
+  cancel-in-progress: false
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Copy public workbench files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$(gh api repositories/1457359648 --jq .full_name)"
+          path="public/dsh-personal-workbench"
+          mkdir -p "$path/icons"
+          source="https://xuanqing-lab.github.io/${repo#*/}"
+          curl --fail --silent --show-error --location --retry 3 "$source/index.json" -o "$path/index.json"
+          jq -e '.format == 1 and any(.plugins[]; .name == "dsh-personal-workbench-xuanqing" and (.versions | length > 0))' "$path/index.json"
+          curl --fail --silent --show-error --location --retry 3 "$source/icons/workbench.svg" -o "$path/icons/workbench.svg"
+          curl --fail --silent --show-error --location --retry 3 "$source/preview.png" -o "$path/preview.png"
+          printf '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>个人 AI 工作台</title><link rel="canonical" href="https://github.com/%s"><meta http-equiv="refresh" content="0;url=https://github.com/%s"><a href="https://github.com/%s">打开个人 AI 工作台</a></html>\n' "$repo" "$repo" "$repo" > "$path/index.html"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - name: Publish the compatibility paths
+        uses: actions/deploy-pages@v4
+        id: deploy
